@@ -29,3 +29,7 @@ dist-ssr
 # Employee names/emails/org-chart data -- kept local-only, same as the
 # untracked CSVs in the original evals-h224 repo, for confidentiality.
 data/
+
+# Supabase CLI local cache (project ref, org id, DB host, tool versions) --
+# regenerated per-machine by `supabase link`, not meant to be committed.
+supabase/.temp/
