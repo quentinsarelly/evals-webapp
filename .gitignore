@@ -33,3 +33,6 @@ data/
 # Supabase CLI local cache (project ref, org id, DB host, tool versions) --
 # regenerated per-machine by `supabase link`, not meant to be committed.
 supabase/.temp/
+
+# Cycle notification email draft -- kept local only.
+NEW_CYCLE_EMAIL.md
