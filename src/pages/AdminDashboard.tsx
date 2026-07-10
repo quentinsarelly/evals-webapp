@@ -25,13 +25,14 @@ import {
 import { createCycle, listCycles, updateCycleStatus } from "@/lib/services/cycle-service";
 import { getCycleCompletion } from "@/lib/services/completion-service";
 import { generateAssignments } from "@/lib/services/assignment-service";
-import { triggerExport } from "@/lib/services/export-service";
+import { ExportResult, triggerExport } from "@/lib/services/export-service";
 
 const AdminDashboard: React.FC = () => {
   const queryClient = useQueryClient();
   const [selectedCycleId, setSelectedCycleId] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportResults, setExportResults] = useState<ExportResult[]>([]);
   const [newCycle, setNewCycle] = useState({
     name: "",
     slug: "",
@@ -115,18 +116,25 @@ const AdminDashboard: React.FC = () => {
   const handleExport = async () => {
     if (!cycleId) return;
     setExporting(true);
+    setExportResults([]);
     try {
       const result = await triggerExport(cycleId);
       toast.success(`${result.results.length} archivo(s) generados.`);
       if (result.errors.length > 0) {
         toast.error(`${result.errors.length} error(es) durante la exportación.`);
       }
+      setExportResults(result.results);
       queryClient.invalidateQueries({ queryKey: ["cycles"] });
     } catch (err) {
       toast.error("No se pudo generar la exportación.");
     } finally {
       setExporting(false);
     }
+  };
+
+  const handleSelectCycle = (id: string) => {
+    setSelectedCycleId(id);
+    setExportResults([]);
   };
 
   return (
@@ -201,7 +209,7 @@ const AdminDashboard: React.FC = () => {
         {!cyclesLoading && cycles && cycles.length > 0 && (
           <div className="flex items-center gap-3">
             <Label>Ciclo:</Label>
-            <Select value={cycleId ?? undefined} onValueChange={setSelectedCycleId}>
+            <Select value={cycleId ?? undefined} onValueChange={handleSelectCycle}>
               <SelectTrigger className="w-64">
                 <SelectValue placeholder="Selecciona un ciclo" />
               </SelectTrigger>
@@ -265,6 +273,36 @@ const AdminDashboard: React.FC = () => {
             )}
           </CardContent>
         </Card>
+
+        {exportResults.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Archivos generados ({exportResults.length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-1">
+                {exportResults.map((r) => (
+                  <li key={r.personId}>
+                    <a
+                      href={r.signedUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary underline text-sm"
+                    >
+                      {r.fullName}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-muted-foreground mt-3">
+                Estos enlaces vencen en 7 días. Si necesitas volver a descargarlos después,
+                genera los archivos de nuevo desde aquí.
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </Layout>
   );
