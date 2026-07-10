@@ -13,8 +13,11 @@ port = 54323
 
 [auth]
 enabled = true
-site_url = "http://localhost:8080"
-additional_redirect_urls = ["http://localhost:8080/auth/callback"]
+site_url = "https://evals-webapp.vercel.app"
+additional_redirect_urls = [
+  "http://localhost:8080/auth/callback",
+  "https://evals-webapp.vercel.app/auth/callback",
+]
 
 [auth.external.google]
 enabled = true
