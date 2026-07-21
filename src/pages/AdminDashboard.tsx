@@ -26,6 +26,7 @@ import { createCycle, listCycles, updateCycleStatus } from "@/lib/services/cycle
 import { getCycleCompletion } from "@/lib/services/completion-service";
 import { generateAssignments } from "@/lib/services/assignment-service";
 import { ExportResult, triggerExport } from "@/lib/services/export-service";
+import { listPeople } from "@/lib/services/person-service";
 
 const AdminDashboard: React.FC = () => {
   const queryClient = useQueryClient();
@@ -54,6 +55,17 @@ const AdminDashboard: React.FC = () => {
     queryFn: () => getCycleCompletion(cycleId!),
     enabled: !!cycleId,
   });
+
+  const { data: people } = useQuery({ queryKey: ["people"], queryFn: listPeople });
+
+  const pending = (completion ?? [])
+    .filter((row) => row.assignmentsGivenSubmitted < row.assignmentsGiven)
+    .map((row) => ({
+      ...row,
+      email: people?.find((p) => p.id === row.personId)?.email ?? "",
+      pendingCount: row.assignmentsGiven - row.assignmentsGivenSubmitted,
+    }))
+    .sort((a, b) => b.pendingCount - a.pendingCount);
 
   const handleCreateCycle = async () => {
     if (!newCycle.name || !newCycle.slug || !newCycle.periodStart || !newCycle.periodEnd) {
@@ -113,8 +125,25 @@ const AdminDashboard: React.FC = () => {
     toast.success("Ciclo cerrado.");
   };
 
+  const handleReopenCycle = async () => {
+    if (!cycleId) return;
+    await updateCycleStatus(cycleId, "open");
+    queryClient.invalidateQueries({ queryKey: ["cycles"] });
+    toast.success("Ciclo reabierto. Los evaluadores pueden continuar sus formularios.");
+  };
+
   const handleExport = async () => {
     if (!cycleId) return;
+    if (completion) {
+      const totalGiven = completion.reduce((sum, r) => sum + r.assignmentsGiven, 0);
+      const totalSubmitted = completion.reduce((sum, r) => sum + r.assignmentsGivenSubmitted, 0);
+      if (totalSubmitted < totalGiven) {
+        const confirmed = window.confirm(
+          `Solo ${totalSubmitted} de ${totalGiven} evaluaciones han sido enviadas. Exportar ahora marcará el ciclo como "exportado" y los evaluadores dejarán de ver sus formularios pendientes en "Mis evaluaciones". ¿Exportar de todas formas?`
+        );
+        if (!confirmed) return;
+      }
+    }
     setExporting(true);
     setExportResults([]);
     try {
@@ -135,6 +164,26 @@ const AdminDashboard: React.FC = () => {
   const handleSelectCycle = (id: string) => {
     setSelectedCycleId(id);
     setExportResults([]);
+  };
+
+  const handleCopyPendingEmails = async () => {
+    const emails = pending.map((row) => row.email).filter(Boolean).join(", ");
+    await navigator.clipboard.writeText(emails);
+    toast.success("Correos copiados al portapapeles.");
+  };
+
+  const handleExportPendingCsv = () => {
+    const header = "Nombre,Correo,Pendientes\n";
+    const rows = pending
+      .map((row) => `"${row.fullName}","${row.email}",${row.pendingCount}`)
+      .join("\n");
+    const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pendientes-${cycle?.slug ?? "ciclo"}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -235,6 +284,11 @@ const AdminDashboard: React.FC = () => {
                 Cerrar ciclo
               </Button>
             )}
+            {(cycle?.status === "exported" || cycle?.status === "closed") && (
+              <Button variant="outline" onClick={handleReopenCycle}>
+                Reabrir ciclo
+              </Button>
+            )}
             <Button variant="outline" onClick={handleExport} disabled={exporting}>
               {exporting ? "Exportando..." : "Generar archivos retro"}
             </Button>
@@ -265,6 +319,51 @@ const AdminDashboard: React.FC = () => {
                       </TableCell>
                       <TableCell>
                         {row.assignmentsReceivedSubmitted} / {row.assignmentsReceived}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
+            <CardTitle className="text-base">Pendientes ({pending.length})</CardTitle>
+            {pending.length > 0 && (
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={handleCopyPendingEmails}>
+                  Copiar correos
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExportPendingCsv}>
+                  Exportar CSV
+                </Button>
+              </div>
+            )}
+          </CardHeader>
+          <CardContent>
+            {pending.length === 0 && !completionLoading && (
+              <p className="text-sm text-muted-foreground">
+                Todos han enviado sus evaluaciones asignadas.
+              </p>
+            )}
+            {pending.length > 0 && (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Persona</TableHead>
+                    <TableHead>Correo</TableHead>
+                    <TableHead>Pendientes</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pending.map((row) => (
+                    <TableRow key={row.personId}>
+                      <TableCell>{row.fullName}</TableCell>
+                      <TableCell>{row.email}</TableCell>
+                      <TableCell>
+                        {row.pendingCount} de {row.assignmentsGiven}
                       </TableCell>
                     </TableRow>
                   ))}
